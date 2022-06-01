@@ -1,0 +1,16 @@
+{
+  "output_dir": "../results_4/movie/dm.token/",
+  "ft_root": "/data2/yzh/Dataset/MOVIES/feature",
+  "cap_file": {
+    "trn":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/someone/train.json",
+    "val":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/someone/val.json",
+    "tst":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/someone/test.json"
+  },
+  "word2int_file": "/data2/yzh/Dataset/MOVIES/annotation/811/vocab/someone/c2id.json",
+  "int2word_file": "/data2/yzh/Dataset/MOVIES/annotation/811/vocab/someone/id2c.json",
+  "name_file": {
+    "tst": "/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/name_files/test_name.json",
+    "val": "/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/name_files/val_name.json",
+    "trn": "/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/name_files/train_name.json"
+  }
+}

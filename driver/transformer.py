@@ -53,17 +53,17 @@ def main():
     path_cfg.save(os.path.join(path_cfg.log_dir, 'path.cfg'))
     json.dump(vars(opts), open(os.path.join(path_cfg.log_dir, 'opts.cfg'), 'w'), indent=2)
 
-    trn_data = dataset.CaptionDataset(path_cfg.name_file['trn'], path_cfg.ft_root, path_cfg.cap_file, path_cfg.word2int_file, path_cfg.int2word_file,
+    trn_data = dataset.CaptionDataset(path_cfg.name_file['trn'], path_cfg.ft_root, path_cfg.cap_file['trn'], path_cfg.word2int_file, path_cfg.int2word_file,
       model_cfg.subcfgs[DECODER].max_words_in_sent, is_train=True, _logger=_logger)
     trn_reader = data.DataLoader(trn_data, batch_size=model_cfg.trn_batch_size, shuffle=True, num_workers=4)
-    val_data = dataset.CaptionDataset(path_cfg.name_file['val'], path_cfg.ft_root, path_cfg.cap_file, path_cfg.word2int_file, path_cfg.int2word_file,
+    val_data = dataset.CaptionDataset(path_cfg.name_file['val'], path_cfg.ft_root, path_cfg.cap_file['val'], path_cfg.word2int_file, path_cfg.int2word_file,
       model_cfg.subcfgs[DECODER].max_words_in_sent, is_train=False, _logger=_logger)
     val_reader = data.DataLoader(val_data, batch_size=model_cfg.tst_batch_size, shuffle=False, num_workers=4)
 
     _model.train(trn_reader, val_reader, path_cfg.model_dir, path_cfg.log_dir, resume_file=opts.resume_file)
 
   else:
-    tst_data = dataset.CaptionDataset(path_cfg.name_file[opts.eval_set], path_cfg.ft_root, path_cfg.cap_file, path_cfg.word2int_file, path_cfg.int2word_file,
+    tst_data = dataset.CaptionDataset(path_cfg.name_file['tst'], path_cfg.ft_root, path_cfg.cap_file['tst'], path_cfg.word2int_file, path_cfg.int2word_file,
       model_cfg.subcfgs[DECODER].max_words_in_sent, is_train=False, _logger=_logger)
     tst_reader = data.DataLoader(tst_data, batch_size=model_cfg.tst_batch_size, shuffle=False, num_workers=4)
 

@@ -1,1 +1,13 @@
 *__pycache__/
+results/movie/dm.token/log/
+results/movie/dm.token/model/
+results/movie/dm.token/pred
+results_2/movie/dm.token/log/
+results_2/movie/dm.token/model/
+results_2/movie/dm.token/pred
+results_3/movie/dm.token/log/
+results_3/movie/dm.token/model/
+results_3/movie/dm.token/pred
+results_4/movie/dm.token/log/
+results_4/movie/dm.token/model/
+results_4/movie/dm.token/pred

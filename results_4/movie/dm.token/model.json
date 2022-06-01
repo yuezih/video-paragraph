@@ -1,7 +1,7 @@
 {
   "decay_boundarys": [], 
   "val_per_epoch": true,
-  "trn_batch_size": 10,
+  "trn_batch_size": 56,
   "tst_batch_size": 100,
   "num_epoch": 50, 
   "decay_schema": null, 
@@ -9,16 +9,16 @@
     "transformer": {
       "lr_mult": 1.0,
       "freeze": false,
-      "max_words_in_sent": 150,
-      "ft_dim": 4096,
-      "vocab": 10246,
+      "max_words_in_sent": 100,
+      "ft_dim": 1536,
+      "vocab": 4207,
       "dropout": 0.2,
       "keyframes": false,
       "rl": false,
       "document_freq": "../data/activitynet/4-gram-phrases-count.json"
     },
    "vis_enc": {
-      "ft_dim": 4096,
+      "ft_dim": 1536,
       "hidden_size": 512,
       "rnn_type": "lstm",
       "num_layers": 1,

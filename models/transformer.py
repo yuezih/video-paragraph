@@ -8,6 +8,7 @@ import json
 import h5py
 import random
 from tqdm import tqdm
+import pdb
 
 import torch
 import torch.nn as nn
@@ -59,15 +60,18 @@ class TransModel(framework.modelbase.ModelBase):
     return (xe_loss, rl_loss, reconstruct, sparsity)
 
   def forward_loss(self, batch_data, TRG, step=None):
-    trg = torch.LongTensor(batch_data['caption_ids']).cuda()
-    img_fts = torch.FloatTensor(batch_data['img_ft']).cuda()
-    ft_len = torch.LongTensor(batch_data['ft_len']).cuda()
-    img_fts = img_fts[:,:max(ft_len)]
+    trg = torch.LongTensor(batch_data['caption_ids']).cuda() # (batch, seq_len)
+    img_fts = torch.FloatTensor(batch_data['img_ft']).cuda() # (batch, seq_len, dim)
+    # img_fts = torch.Tensor(batch_data['img_ft'], dtype=torch.double).cuda()
+    # img_fts = batch_data['img_ft'].cuda()
+    ft_len = torch.LongTensor(batch_data['ft_len']).cuda() # (batch)
+    img_fts = img_fts[:,:max(ft_len)] # (batch, seq_len, dim)
     trg = trg[:,:max(batch_data['id_len'])]
 
     trg_input = trg[:, :-1]
     src_mask, trg_mask = self.create_masks(ft_len, img_fts.size(1), trg_input)
     outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask)
+    # pdb.set_trace()
     outputs = nn.LogSoftmax(dim=-1)(outputs)
     ys = trg[:, 1:].contiguous().view(-1)
     norm = trg[:, 1:].ne(1).sum().item()
@@ -119,7 +123,9 @@ class TransModel(framework.modelbase.ModelBase):
       img_mask = self.attn_mask(ft_len, max_len=img_fts.size(1)).unsqueeze(-2)
       output, _, attn = self.submods[DECODER].sample(img_fts, img_mask, decoding='greedy')
       sents_per_batch = tst_reader.dataset.int2sent(output.detach())
+      # pdb.set_trace()
       pred_sents.extend(sents_per_batch)
+    # pdb.set_trace()
     score = metrics.evaluation.compute(pred_sents, tst_reader.dataset.names, tst_reader.dataset.ref_captions)
     return score, pred_sents
 

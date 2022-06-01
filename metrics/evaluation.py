@@ -4,12 +4,20 @@ from cap_eval.meteor.meteor import Meteor
 
 import json
 import numpy as np
+import pdb
 
 # initialize the caption evaluators
 meteor_scorer = Meteor()
 cider_scorer = Cider()
 bleu_scorer = Bleu(4)
 
+UNK = 0
+
+stoi = json.load(open('/data2/yzh/Dataset/MOVIES/annotation/811/vocab/origin/c2id.json'))
+
+def sent2int(str_sent):
+  int_sent = [stoi.get(w, UNK) for w in str_sent]
+  return int_sent
 
 def bleu_eval(refs, cands):
   print ("calculating bleu_4 score...")
@@ -69,23 +77,26 @@ def diversity(data_pred):
   div1, div2, re4 = [], [], []
   for i in range(len(data_pred)):
     unigrams, bigrams, trigrams, fourgrams = {}, {}, {}, {}
-    if data_pred[i][-1] == '.':
-      para = data_pred[i].split('.')[:-1]
+    if len(data_pred[i]) == 0:
+      continue
     else:
-      para = data_pred[i].split('.')
-    for j, pred_sentence in enumerate(para):
-      if pred_sentence[-1] == '.':
-        pred_sentence = pred_sentence[:-1]
-      while len(pred_sentence) > 0 and pred_sentence[-1] == ' ':
-        pred_sentence = pred_sentence[:-1]
-      while len(pred_sentence) > 0 and pred_sentence[0] == ' ':
-        pred_sentence = pred_sentence[1:]
-      pred_sentence = pred_sentence.replace(',', ' ')
-      while '  ' in pred_sentence:
-        pred_sentence = pred_sentence.replace('  ', ' ')
+      if data_pred[i][-1] == '.':
+        para = data_pred[i].split('.')[:-1]
+      else:
+        para = data_pred[i].split('.')
+      for j, pred_sentence in enumerate(para):
+        if pred_sentence[-1] == '.':
+          pred_sentence = pred_sentence[:-1]
+        while len(pred_sentence) > 0 and pred_sentence[-1] == ' ':
+          pred_sentence = pred_sentence[:-1]
+        while len(pred_sentence) > 0 and pred_sentence[0] == ' ':
+          pred_sentence = pred_sentence[1:]
+        pred_sentence = pred_sentence.replace(',', ' ')
+        while '  ' in pred_sentence:
+          pred_sentence = pred_sentence.replace('  ', ' ')
 
-      words_pred = pred_sentence.split(' ')
-      unigrams, bigrams, trigrams, fourgrams = getNgrams(words_pred, unigrams, bigrams, trigrams, fourgrams)
+        words_pred = pred_sentence.split(' ')
+        unigrams, bigrams, trigrams, fourgrams = getNgrams(words_pred, unigrams, bigrams, trigrams, fourgrams)
 
     sum_unigrams = sum([unigrams[un] for un in unigrams])
     vid_div1 = float(len(unigrams)) / (float(sum_unigrams) + 1e-28)
@@ -102,8 +113,10 @@ def compute(preds, names, refs):
   refcaps = {}
   candcaps = {}
   for i in range(len(preds)):
-    candcaps[i] = [preds[i]]
-    refcaps[i] = refs[names[i]]
+    candcaps[i] = [' '.join([c for c in preds[i]])]
+    ref_sentence = refs[names[i]]['sentences'][0]
+    refcaps[i] = [' '.join([c for c in ref_sentence])]
+  # pdb.set_trace()
   bleu = bleu_eval(refcaps, candcaps)
   cider = cider_eval(refcaps, candcaps)
   meteor = meteor_eval(refcaps, candcaps)
