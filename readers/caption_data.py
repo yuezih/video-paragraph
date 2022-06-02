@@ -46,6 +46,7 @@ class CaptionDataset(torch.utils.data.Dataset):
     self.ft_root = ft_root
     self.max_words_in_sent = max_words_in_sent
     self.is_train = is_train
+    self.movie2id = json.load(open('/data2/yzh/Dataset/MOVIES/annotation/811/vocab/movie_vocab/c2id.json'))
 
   def temporal_pad_or_trim_feature(self, ft, max_len, transpose=False, average=False):
     length, dim_ft = ft.shape
@@ -120,7 +121,8 @@ class CaptionDataset(torch.utils.data.Dataset):
     # start = int(example["timestamps"][0][0])
     # end = int(example["timestamps"][0][1])
     sentence = example["sentences"][0]
-    # movie_id = example["movie_id"]
+    movie_id = example["movie_id"]
+    movie_idx = self.movie2id[movie_id]
     feat_path_resnet = os.path.join(self.ft_root, "resnet_clip/{}.npy.npz".format(name))
     feat_path_s3d = os.path.join(self.ft_root, "s3d_clip/{}.npy.npz".format(name))
     # print(feat_path_resnet)
@@ -136,6 +138,7 @@ class CaptionDataset(torch.utils.data.Dataset):
     video_feature = np.zeros((max_v_l, feat_dim), np.float32)  # only video features and padding
     video_feature[:feat_len] = raw_feat[:]
 
+    outs['movie_id'] = movie_idx
     outs['ft_len'] = feat_len
     outs['img_ft'] = video_feature
     outs['name'] = name

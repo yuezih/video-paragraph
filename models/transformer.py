@@ -67,10 +67,13 @@ class TransModel(framework.modelbase.ModelBase):
     ft_len = torch.LongTensor(batch_data['ft_len']).cuda() # (batch)
     img_fts = img_fts[:,:max(ft_len)] # (batch, seq_len, dim)
     trg = trg[:,:max(batch_data['id_len'])]
+    movie_id = batch_data['movie_id'].cuda()
 
     trg_input = trg[:, :-1]
     src_mask, trg_mask = self.create_masks(ft_len, img_fts.size(1), trg_input)
-    outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask)
+    movie_mask = torch.tensor([[[True]]]*len(src_mask)).cuda()
+    src_mask = torch.cat((movie_mask, src_mask), dim=-1)
+    outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask, movie_id)
     # pdb.set_trace()
     outputs = nn.LogSoftmax(dim=-1)(outputs)
     ys = trg[:, 1:].contiguous().view(-1)
@@ -121,7 +124,10 @@ class TransModel(framework.modelbase.ModelBase):
       ft_len = torch.LongTensor(batch_data['ft_len']).cuda()
       img_fts = img_fts[:,:max(ft_len)]
       img_mask = self.attn_mask(ft_len, max_len=img_fts.size(1)).unsqueeze(-2)
-      output, _, attn = self.submods[DECODER].sample(img_fts, img_mask, decoding='greedy')
+      movie_mask = torch.tensor([[[True]]]*len(img_mask)).cuda()
+      img_mask = torch.cat((movie_mask, img_mask), dim=-1)
+      movie_id = batch_data['movie_id'].cuda()
+      output, _, attn = self.submods[DECODER].sample(img_fts, img_mask, movie_id, decoding='greedy')
       sents_per_batch = tst_reader.dataset.int2sent(output.detach())
       # pdb.set_trace()
       pred_sents.extend(sents_per_batch)

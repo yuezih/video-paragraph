@@ -8,6 +8,7 @@ import time
 import numpy as np
 from modules.transformer_encoder import Encoder
 from modules.transformer_decoder import Decoder
+import pdb
 
 decay1 = [(i+1)*20**(-1) for i in range(20)]
 decay2 = [1-(i+1)*50**(-1) for i in range(50)]
@@ -49,8 +50,9 @@ class Transformer(nn.Module):
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
 
-  def forward(self, src, trg, src_mask, trg_mask):
-    e_outputs, org_key, select = self.encoder(src, src_mask)
+  def forward(self, src, trg, src_mask, trg_mask, movie_id):
+    e_outputs, org_key, select = self.encoder(src, src_mask, movie_id)
+    # pdb.set_trace()
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
     d_output, attn_weights = [], []
@@ -78,13 +80,13 @@ class Transformer(nn.Module):
     add_state = add_state + (1-add_state) * (add_prob*next_attn)
     return memory_bank, add_state
 
-  def sample(self, src, src_mask, decoding='greedy'):
+  def sample(self, src, src_mask, movie_id, decoding='greedy'):
     init_tok = 2
     eos_tok = 3
     if self.config.keyframes:
       e_outputs, src_mask = self.encoder.get_keyframes(src, src_mask)
     else:
-      e_outputs, _, _ = self.encoder(src, src_mask)
+      e_outputs, _, _ = self.encoder(src, src_mask, movie_id)
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
     outputs = torch.ones(src.size(0), 1).fill_(init_tok).long().cuda()

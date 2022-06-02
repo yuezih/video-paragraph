@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from modules.common import *
+import pdb
 
 
 class EncoderLayer(nn.Module):
@@ -26,20 +27,34 @@ class EncoderLayer(nn.Module):
       x = x + self.dropout_2(self.ff(x2))
       return x, None
 
+class Embedder(nn.Module):
+  def __init__(self, vocab_size, d_model):
+    super().__init__()
+    self.d_model = d_model
+    self.embed = nn.Embedding(vocab_size, d_model)
+  def forward(self, x):
+    return self.embed(x)
 
 class Encoder(nn.Module):
   def __init__(self, ft_dim, d_model, N, heads, dropout, keyframes=False):
     super().__init__()
     self.N = N
     self.embed = nn.Linear(ft_dim, d_model)
+    self.movie_embedder = Embedder(101, d_model)
     self.pe = PositionalEncoder(d_model, dropout=dropout)
     self.layers = get_clones(EncoderLayer(d_model, heads, dropout, keyframes), N)
     self.norm = Norm(d_model)
     self.keyframes = keyframes
 
-  def forward(self, src, mask):
+  def forward(self, src, mask, movie_id):
     x = self.embed(src)
     x = self.pe(x)
+    movie_embed = self.movie_embedder(movie_id)
+    # pdb.set_trace()
+    x = torch.cat((movie_embed.unsqueeze(1), x), dim=1)
+    # movie_mask = torch.tensor([[[True]]]*64).cuda()
+    # mask = torch.cat((movie_mask, mask), dim=-1)
+
     for i in range(self.N):
       x, select = self.layers[i](x, mask)
       
