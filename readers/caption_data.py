@@ -27,11 +27,14 @@ class CaptionDataset(torch.utils.data.Dataset):
     self.names = list(self.ref_captions.keys())
     self.meta_anno = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/meta_anno.json'))
     self.face_feature_h5 = h5py.File('/data2/yzh/Dataset/MOVIES/metadata/face_profile_512dim.hdf5', 'r')
+    self.movie_with_face_list = os.listdir('/data2/yzh/Dataset/MOVIES/metadata/xigua_face')
     self.stoi = json.load(open(word2int))
     self.itos = json.load(open(int2word))
     self.ft_root = ft_root
     self.max_words_in_sent = max_words_in_sent
     self.is_train = is_train
+    # self.rolestoi = json.load(open('/data2/yzh/Dataset/MOVIES/annotation/811/vocab/rolename/rolename_vocab/c2id.json'))
+
 
   def temporal_pad_or_trim_feature(self, ft, max_len, transpose=False, average=False):
     length, dim_ft = ft.shape
@@ -94,11 +97,29 @@ class CaptionDataset(torch.utils.data.Dataset):
     example = self.ref_captions[name]
     sentence = example["sentences"][0]
 
-    movie_id = example["movie_id"]
-    role_list = [role_id for role_id in self.meta_anno[movie_id]]
     roles_feature = np.zeros((3, 512), np.float32)
-    for role_id in role_list:
-      role_feature = np.load(os.path.join(self.ft_root, '{}.npy'.format(role_id)))
+    rolenames_id_sent = []
+    role_list = []
+
+    movie_id = example["movie_id"]
+    if movie_id in self.meta_anno and movie_id in self.movie_with_face_list:
+      role_list = [role_id for role_id in self.meta_anno[movie_id]][:3]
+
+      for i in range(len(role_list)):
+        role_id = role_list[i]
+        # rolename
+        rolename = self.meta_anno[movie_id][role_id]["rolename"]
+        rolename_split = i+4 # <role{i+1}>
+        rolenames_id_sent.append(rolename_split)
+        rolenames_id_sent += [self.stoi.get(w, UNK) for w in rolename]
+        # faces feature
+        if role_id in self.face_feature_h5:
+          role_feature = np.array(self.face_feature_h5[role_id]['features'], dtype=np.float32)
+          roles_feature[i] = role_feature
+    
+    rolename_len = len(rolenames_id_sent)
+    rolenames_id_sent += [1] * (20 - rolename_len)
+    rolenames_id_sent = np.array(rolenames_id_sent[:20])
 
     feat_path_resnet = os.path.join(self.ft_root, "resnet_clip/{}.npy.npz".format(name))
     feat_path_s3d = os.path.join(self.ft_root, "s3d_clip/{}.npy.npz".format(name))
@@ -118,6 +139,10 @@ class CaptionDataset(torch.utils.data.Dataset):
     outs['ft_len'] = feat_len
     outs['img_ft'] = video_feature
     outs['name'] = name
+    outs['face_ft'] = roles_feature
+    outs['face_ft_len'] = len(role_list)
+    outs['rolename_id'] = rolenames_id_sent
+    outs['rolename_len'] = rolename_len
 
     if self.is_train:
       outs['ref_sents'] = sentence

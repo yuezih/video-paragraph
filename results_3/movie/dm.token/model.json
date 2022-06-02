@@ -1,7 +1,7 @@
 {
   "decay_boundarys": [], 
   "val_per_epoch": true,
-  "trn_batch_size": 56,
+  "trn_batch_size": 40,
   "tst_batch_size": 100,
   "num_epoch": 50, 
   "decay_schema": null, 
@@ -11,7 +11,7 @@
       "freeze": false,
       "max_words_in_sent": 100,
       "ft_dim": 1536,
-      "vocab": 4301,
+      "vocab": 4304,
       "dropout": 0.2,
       "keyframes": false,
       "rl": false,

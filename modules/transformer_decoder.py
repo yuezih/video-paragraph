@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from modules.common import *
 import time
+import pdb
 
 
 class Embedder(nn.Module):
@@ -56,6 +57,7 @@ class Decoder(nn.Module):
       }    
 
   def forward(self, trg, e_outputs, src_mask, trg_mask, step=None):
+    # pdb.set_trace()
     if step == 1:
       self._init_cache()
 

@@ -6,8 +6,9 @@ import framework.configbase
 import math
 import time
 import numpy as np
-from modules.transformer_encoder import Encoder
+from modules.transformer_encoder import CrossEncoder, Encoder, FaceEncoder, RolenameEncoder
 from modules.transformer_decoder import Decoder
+import pdb
 
 decay1 = [(i+1)*20**(-1) for i in range(20)]
 decay2 = [1-(i+1)*50**(-1) for i in range(50)]
@@ -34,6 +35,11 @@ class Transformer(nn.Module):
     super(Transformer, self).__init__()
     self.config = config
     self.encoder = Encoder(self.config.ft_dim, self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout, self.config.keyframes)
+    self.f_encoder = FaceEncoder(self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout)
+    self.r_encoder = RolenameEncoder(self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout)
+    # self.f_encoder.pe.mode = self.encoder.pe.mode
+    # self.r_encoder.pe.mode = self.encoder.pe.mode
+    self.cross_encoder = CrossEncoder(self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout)
     self.decoder = Decoder(self.config.vocab, self.config.d_model, self.config.dec_n_layers, self.config.heads, self.config.dropout)
     self.dropout = nn.Dropout(self.config.dropout)
     self.logit = nn.Linear(self.config.d_model, self.config.vocab)
@@ -49,13 +55,21 @@ class Transformer(nn.Module):
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
 
-  def forward(self, src, trg, src_mask, trg_mask):
+  def forward(self, src, trg, face, rolename, src_mask, trg_mask, face_mask, rolename_mask):
+    # pdb.set_trace()
     e_outputs, org_key, select = self.encoder(src, src_mask)
+    f_outputs = self.f_encoder(face, face_mask)
+    r_outputs = self.r_encoder(rolename, rolename_mask)
+    input = torch.cat([e_outputs, f_outputs, r_outputs], dim=1)
+    mask = torch.cat([src_mask, face_mask, rolename_mask], dim=-1)
+
+    e_outputs = self.cross_encoder(input, mask)
+
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
     d_output, attn_weights = [], []
     for i in range(1, trg.size(1)+1):
-      word, attn = self.decoder(trg[:,i-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,i-1,:i].unsqueeze(1), step=i)
+      word, attn = self.decoder(trg[:,i-1].unsqueeze(1), memory_bank, mask, trg_mask[:,i-1,:i].unsqueeze(1), step=i)
       d_output.append(word[:,-1])
       attn_weights.append(attn[:,:,-1].mean(dim=1))
       memory_bank, add_state = self.update_memory(memory_bank, add_state, e_outputs, attn_weights[-20:], d_output[-20:])
@@ -78,13 +92,18 @@ class Transformer(nn.Module):
     add_state = add_state + (1-add_state) * (add_prob*next_attn)
     return memory_bank, add_state
 
-  def sample(self, src, src_mask, decoding='greedy'):
+  def sample(self, src, face, rolename, src_mask, face_mask, rolename_mask, decoding='greedy'):
     init_tok = 2
     eos_tok = 3
     if self.config.keyframes:
       e_outputs, src_mask = self.encoder.get_keyframes(src, src_mask)
     else:
       e_outputs, _, _ = self.encoder(src, src_mask)
+      f_outputs = self.f_encoder(face, face_mask)
+      r_outputs = self.r_encoder(rolename, rolename_mask)
+      input = torch.cat([e_outputs, f_outputs, r_outputs], dim=1)
+      mask = torch.cat([src_mask, face_mask, rolename_mask], dim=-1)
+      e_outputs = self.cross_encoder(input, mask)
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
     outputs = torch.ones(src.size(0), 1).fill_(init_tok).long().cuda()
@@ -92,7 +111,7 @@ class Transformer(nn.Module):
     attn_weights, d_output = [], []
     for i in range(1, 60):
       trg_mask = self.nopeak_mask(i)
-      word, attn = self.decoder(outputs[:,-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,-1].unsqueeze(1), step=i)
+      word, attn = self.decoder(outputs[:,-1].unsqueeze(1), memory_bank, mask, trg_mask[:,-1].unsqueeze(1), step=i)
       attn_weights.append(attn[:,:,-1].mean(dim=1))
       d_output.append(word[:,-1])
       out = self.logit(word)

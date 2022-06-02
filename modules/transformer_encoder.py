@@ -2,6 +2,13 @@ import torch
 import torch.nn as nn
 from modules.common import *
 
+class Embedder(nn.Module):
+  def __init__(self, vocab_size, d_model):
+    super().__init__()
+    self.d_model = d_model
+    self.embed = nn.Embedding(vocab_size, d_model)
+  def forward(self, x):
+    return self.embed(x)
 
 class EncoderLayer(nn.Module):
   def __init__(self, d_model, heads, dropout=0.1, keyframes=False):
@@ -26,6 +33,39 @@ class EncoderLayer(nn.Module):
       x = x + self.dropout_2(self.ff(x2))
       return x, None
 
+class FaceEncoder(nn.Module):
+  def __init__(self, d_model, N, heads, dropout):
+    super().__init__()
+    N = 1
+    self.N = N
+    self.embed = nn.Linear(512, d_model)
+    self.pe = PositionalEncoder(d_model, dropout=dropout)
+    self.layers = get_clones(EncoderLayer(d_model, heads, dropout), N)
+    self.norm = Norm(d_model)
+
+  def forward(self, img, mask):
+    x = self.embed(img)
+    x = self.pe(x)
+    for i in range(self.N):
+      x, select = self.layers[i](x, mask)
+    return self.norm(x)
+
+class RolenameEncoder(nn.Module):
+  def __init__(self, d_model, N, heads, dropout):
+    super().__init__()
+    N = 1
+    self.N = N
+    self.embed = Embedder(4304, d_model)
+    self.pe = PositionalEncoder(d_model, dropout=dropout)
+    self.layers = get_clones(EncoderLayer(d_model, heads, dropout), N)
+    self.norm = Norm(d_model)
+
+  def forward(self, src, mask):
+    x = self.embed(src)
+    x = self.pe(x)
+    for i in range(self.N):
+      x, select = self.layers[i](x, mask)
+    return self.norm(x)
 
 class Encoder(nn.Module):
   def __init__(self, ft_dim, d_model, N, heads, dropout, keyframes=False):
@@ -63,3 +103,17 @@ class Encoder(nn.Module):
     x = torch.gather(x, 1, indices.unsqueeze(-1).expand(x.size(0),-1,x.size(-1)))
     mask = torch.gather(mask, 2, indices.unsqueeze(1).expand(x.size(0),1,-1))
     return self.norm(x), mask
+
+class CrossEncoder(nn.Module):
+  def __init__(self, d_model, N, heads, dropout):
+    super().__init__()
+    N = 1
+    self.N = N
+    self.layers = get_clones(EncoderLayer(d_model, heads, dropout), N)
+    self.norm = Norm(d_model)
+    self.cache = None
+
+  def forward(self, x, mask):
+    for i in range(self.N):
+      x, select = self.layers[i](x, mask)
+    return self.norm(x)
