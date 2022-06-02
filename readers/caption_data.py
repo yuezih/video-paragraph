@@ -7,6 +7,7 @@ import numpy as np
 import random
 import math
 import torch.utils.data
+import h5py
 
 UNK, PAD, BOS, EOS = 0, 1, 2, 3
 
@@ -21,26 +22,11 @@ class CaptionDataset(torch.utils.data.Dataset):
     else:
       self.print_fn = _logger.info
 
-    # self.names = np.load(name_file)
-    # self.num_ft = len(self.names)
-    # self.print_fn('names size %d' % self.num_ft)
 
     self.ref_captions = json.load(open(cap_file)) # gt
     self.names = list(self.ref_captions.keys())
-    # self.train_ref = json.load(open(cap_file['trn']))
-    # self.val_ref = json.load(open(cap_file['val']))
-    # self.test_ref = json.load(open(cap_file['tst']))
-    # self.val_tst_ref = self.val_ref
-    # self.val_tst_ref.update(self.test_ref)
-
-    # self.captions, self.cap2ftid = [], []
-    # for ftid, name in enumerate(self.names):
-    #   self.captions.extend(self.ref_captions[name])
-    #   self.cap2ftid.extend([ftid] * len(self.ref_captions[name]))
-    # self.cap2ftid = np.array(self.cap2ftid)
-    # self.num_caption = len(self.captions)
-    # self.print_fn('captions size %d' % self.num_caption)
-    
+    self.meta_anno = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/meta_anno.json'))
+    self.face_feature_h5 = h5py.File('/data2/yzh/Dataset/MOVIES/metadata/face_profile_512dim.hdf5', 'r')
     self.stoi = json.load(open(word2int))
     self.itos = json.load(open(int2word))
     self.ft_root = ft_root
@@ -104,23 +90,16 @@ class CaptionDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx):
     outs = {}
-    # if self.is_train:
-    #   name = self.names[self.cap2ftid[idx]]
-    # else:
-    #   name = self.names[idx]
-    # name = list(self.ref_captions.keys())[idx]
     name = self.names[idx]
     example = self.ref_captions[name]
-    # if self.is_train:
-    #   example = self.train_ref[idx]
-    # else:
-    #   example = self.val_tst_ref[idx]
-
-    # example = self.ref_captions[idx]
-    # start = int(example["timestamps"][0][0])
-    # end = int(example["timestamps"][0][1])
     sentence = example["sentences"][0]
-    # movie_id = example["movie_id"]
+
+    movie_id = example["movie_id"]
+    role_list = [role_id for role_id in self.meta_anno[movie_id]]
+    roles_feature = np.zeros((3, 512), np.float32)
+    for role_id in role_list:
+      role_feature = np.load(os.path.join(self.ft_root, '{}.npy'.format(role_id)))
+
     feat_path_resnet = os.path.join(self.ft_root, "resnet_clip/{}.npy.npz".format(name))
     feat_path_s3d = os.path.join(self.ft_root, "s3d_clip/{}.npy.npz".format(name))
     # print(feat_path_resnet)
