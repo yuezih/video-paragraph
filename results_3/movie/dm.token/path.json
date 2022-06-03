@@ -4,7 +4,7 @@
   "cap_file": {
     "trn":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/origin/train.json",
     "val":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/origin/val.json",
-    "tst":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/origin/test.json"
+    "tst":"/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/style/test.json"
   },
   "word2int_file": "/data2/yzh/Dataset/MOVIES/annotation/811/vocab/origin/c2id.json",
   "int2word_file": "/data2/yzh/Dataset/MOVIES/annotation/811/vocab/origin/id2c.json",

@@ -93,6 +93,9 @@ def main():
       str_scores = ','.join(str_scores)
       print(str_scores)
       model_str_scores.append(str_scores)
+      # 追加写入/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/style/test_results.txt
+      with open('/data2/yzh/Dataset/MOVIES/annotation/811/zeroshot/style/test_results.txt', 'a') as f:
+        f.write(str_scores + '\n')
 
     score_log_file = os.path.join(path_cfg.pred_dir, opts.eval_set, 'scores.csv')
     with open(score_log_file, 'w') as f:
