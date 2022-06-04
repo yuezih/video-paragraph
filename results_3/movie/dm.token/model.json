@@ -1,7 +1,7 @@
 {
   "decay_boundarys": [], 
   "val_per_epoch": true,
-  "trn_batch_size": 54,
+  "trn_batch_size": 50,
   "tst_batch_size": 100,
   "num_epoch": 50, 
   "decay_schema": null, 

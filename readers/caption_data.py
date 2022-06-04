@@ -21,32 +21,16 @@ class CaptionDataset(torch.utils.data.Dataset):
     else:
       self.print_fn = _logger.info
 
-    # self.names = np.load(name_file)
-    # self.num_ft = len(self.names)
-    # self.print_fn('names size %d' % self.num_ft)
-
     self.ref_captions = json.load(open(cap_file)) # gt
     self.names = list(self.ref_captions.keys())
-    # self.train_ref = json.load(open(cap_file['trn']))
-    # self.val_ref = json.load(open(cap_file['val']))
-    # self.test_ref = json.load(open(cap_file['tst']))
-    # self.val_tst_ref = self.val_ref
-    # self.val_tst_ref.update(self.test_ref)
-
-    # self.captions, self.cap2ftid = [], []
-    # for ftid, name in enumerate(self.names):
-    #   self.captions.extend(self.ref_captions[name])
-    #   self.cap2ftid.extend([ftid] * len(self.ref_captions[name]))
-    # self.cap2ftid = np.array(self.cap2ftid)
-    # self.num_caption = len(self.captions)
-    # self.print_fn('captions size %d' % self.num_caption)
     
     self.stoi = json.load(open(word2int))
     self.itos = json.load(open(int2word))
     self.ft_root = ft_root
     self.max_words_in_sent = max_words_in_sent
     self.is_train = is_train
-    self.movie2id = json.load(open('/data2/yzh/Dataset/MOVIES/annotation/811/vocab/movie_vocab/c2id.json'))
+    self.movie2tags = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/movie_tag_anno.json'))
+    self.tag2id = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/tag_vocab.json'))
 
   def temporal_pad_or_trim_feature(self, ft, max_len, transpose=False, average=False):
     length, dim_ft = ft.shape
@@ -105,24 +89,18 @@ class CaptionDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx):
     outs = {}
-    # if self.is_train:
-    #   name = self.names[self.cap2ftid[idx]]
-    # else:
-    #   name = self.names[idx]
-    # name = list(self.ref_captions.keys())[idx]
+
     name = self.names[idx]
     example = self.ref_captions[name]
-    # if self.is_train:
-    #   example = self.train_ref[idx]
-    # else:
-    #   example = self.val_tst_ref[idx]
-
-    # example = self.ref_captions[idx]
-    # start = int(example["timestamps"][0][0])
-    # end = int(example["timestamps"][0][1])
     sentence = example["sentences"][0]
+    # tags
     movie_id = example["movie_id"]
-    movie_idx = self.movie2id[movie_id]
+    tags = self.movie2tags[movie_id]
+    tags = [self.tag2id[t] for t in tags]
+    tags_len = len(tags)
+    tags += [0] * (4 - tags_len)
+    tags = np.array(tags[:4])
+
     feat_path_resnet = os.path.join(self.ft_root, "resnet_clip/{}.npy.npz".format(name))
     feat_path_s3d = os.path.join(self.ft_root, "s3d_clip/{}.npy.npz".format(name))
     # print(feat_path_resnet)
@@ -138,10 +116,12 @@ class CaptionDataset(torch.utils.data.Dataset):
     video_feature = np.zeros((max_v_l, feat_dim), np.float32)  # only video features and padding
     video_feature[:feat_len] = raw_feat[:]
 
-    outs['movie_id'] = movie_idx
+    # outs['movie_id'] = movie_idx
     outs['ft_len'] = feat_len
     outs['img_ft'] = video_feature
     outs['name'] = name
+    outs['tags'] = tags
+    outs['tags_len'] = tags_len
 
     if self.is_train:
       outs['ref_sents'] = sentence

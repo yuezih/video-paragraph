@@ -1,2 +1,2 @@
-CUDA_VISIBLE_DEVICES=1 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --is_train
-# CUDA_VISIBLE_DEVICES=1 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --eval_set tst --resume_file ../results/movie/dm.token/model/epoch.48.th
+# CUDA_VISIBLE_DEVICES=4 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --is_train
+CUDA_VISIBLE_DEVICES=1 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --eval_set tst --resume_file ../results/movie/tags/model/epoch.44.th

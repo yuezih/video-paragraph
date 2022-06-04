@@ -50,14 +50,15 @@ class Transformer(nn.Module):
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
 
-  def forward(self, src, trg, src_mask, trg_mask, movie_id):
-    e_outputs, org_key, select = self.encoder(src, src_mask, movie_id)
+  def forward(self, src, trg, tags, src_mask, trg_mask, tags_mask):
+    e_outputs, org_key, select = self.encoder(src, tags, src_mask, tags_mask)
+    mask = torch.cat([tags_mask, src_mask], dim=-1)
     # pdb.set_trace()
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
     d_output, attn_weights = [], []
     for i in range(1, trg.size(1)+1):
-      word, attn = self.decoder(trg[:,i-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,i-1,:i].unsqueeze(1), step=i)
+      word, attn = self.decoder(trg[:,i-1].unsqueeze(1), memory_bank, mask, trg_mask[:,i-1,:i].unsqueeze(1), step=i)
       d_output.append(word[:,-1])
       attn_weights.append(attn[:,:,-1].mean(dim=1))
       memory_bank, add_state = self.update_memory(memory_bank, add_state, e_outputs, attn_weights[-20:], d_output[-20:])
@@ -80,13 +81,16 @@ class Transformer(nn.Module):
     add_state = add_state + (1-add_state) * (add_prob*next_attn)
     return memory_bank, add_state
 
-  def sample(self, src, src_mask, movie_id, decoding='greedy'):
+  def sample(self, src, tags, src_mask, tags_mask, decoding='greedy'):
     init_tok = 2
     eos_tok = 3
     if self.config.keyframes:
       e_outputs, src_mask = self.encoder.get_keyframes(src, src_mask)
     else:
-      e_outputs, _, _ = self.encoder(src, src_mask, movie_id)
+      e_outputs, _, _ = self.encoder(src, tags, src_mask, tags_mask)
+    
+    mask = torch.cat([tags_mask, src_mask], dim=-1)
+
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
     outputs = torch.ones(src.size(0), 1).fill_(init_tok).long().cuda()
@@ -94,7 +98,7 @@ class Transformer(nn.Module):
     attn_weights, d_output = [], []
     for i in range(1, 60):
       trg_mask = self.nopeak_mask(i)
-      word, attn = self.decoder(outputs[:,-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,-1].unsqueeze(1), step=i)
+      word, attn = self.decoder(outputs[:,-1].unsqueeze(1), memory_bank, mask, trg_mask[:,-1].unsqueeze(1), step=i)
       attn_weights.append(attn[:,:,-1].mean(dim=1))
       d_output.append(word[:,-1])
       out = self.logit(word)

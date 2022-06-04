@@ -67,13 +67,16 @@ class TransModel(framework.modelbase.ModelBase):
     ft_len = torch.LongTensor(batch_data['ft_len']).cuda() # (batch)
     img_fts = img_fts[:,:max(ft_len)] # (batch, seq_len, dim)
     trg = trg[:,:max(batch_data['id_len'])]
-    movie_id = batch_data['movie_id'].cuda()
+    # movie_id = batch_data['movie_id'].cuda()
+    tags = batch_data['tags'].cuda()
+    tags_len = batch_data['tags_len'].cuda()
+    tags_mask = self.attn_mask(tags_len, max_len=4).unsqueeze(-2)
 
     trg_input = trg[:, :-1]
     src_mask, trg_mask = self.create_masks(ft_len, img_fts.size(1), trg_input)
-    movie_mask = torch.tensor([[[True]]]*len(src_mask)).cuda()
-    src_mask = torch.cat((movie_mask, src_mask), dim=-1)
-    outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask, movie_id)
+    # movie_mask = torch.tensor([[[True]]]*len(src_mask)).cuda()
+    # src_mask = torch.cat((movie_mask, src_mask), dim=-1)
+    outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, tags, src_mask, trg_mask, tags_mask)
     # pdb.set_trace()
     outputs = nn.LogSoftmax(dim=-1)(outputs)
     ys = trg[:, 1:].contiguous().view(-1)
@@ -90,7 +93,7 @@ class TransModel(framework.modelbase.ModelBase):
       xe_loss += 0.5 * recon_loss + 0.5 * spar_loss
 
     if self.config.subcfgs[DECODER].rl:
-      txt_ids, seqLogprobs, _ = self.submods[DECODER].sample(img_fts, src_mask, decoding='sample')
+      txt_ids, seqLogprobs, _ = self.submods[DECODER].sample(img_fts, tags, src_mask, decoding='sample')
       sents = TRG.int2sent(txt_ids[:,1:].detach())
       sample_masks = torch.zeros((txt_ids.size(0), txt_ids.size(1)-1), dtype=torch.float32).cuda()
       for i in range(txt_ids.size(0)):
@@ -124,10 +127,14 @@ class TransModel(framework.modelbase.ModelBase):
       ft_len = torch.LongTensor(batch_data['ft_len']).cuda()
       img_fts = img_fts[:,:max(ft_len)]
       img_mask = self.attn_mask(ft_len, max_len=img_fts.size(1)).unsqueeze(-2)
-      movie_mask = torch.tensor([[[True]]]*len(img_mask)).cuda()
-      img_mask = torch.cat((movie_mask, img_mask), dim=-1)
-      movie_id = batch_data['movie_id'].cuda()
-      output, _, attn = self.submods[DECODER].sample(img_fts, img_mask, movie_id, decoding='greedy')
+      # movie_mask = torch.tensor([[[True]]]*len(img_mask)).cuda()
+      # img_mask = torch.cat((movie_mask, img_mask), dim=-1)
+      # movie_id = batch_data['movie_id'].cuda()
+      tags = batch_data['tags'].cuda()
+      tags_len = batch_data['tags_len'].cuda()
+      tags_mask = self.attn_mask(tags_len, max_len=4).unsqueeze(-2)
+
+      output, _, attn = self.submods[DECODER].sample(img_fts, tags, img_mask, tags_mask, decoding='greedy')
       sents_per_batch = tst_reader.dataset.int2sent(output.detach())
       # pdb.set_trace()
       pred_sents.extend(sents_per_batch)

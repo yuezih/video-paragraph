@@ -11,3 +11,7 @@ results_3/movie/dm.token/pred
 results_4/movie/dm.token/log/
 results_4/movie/dm.token/model/
 results_4/movie/dm.token/pred
+results/movie/face/
+results_3/movie/face/
+results/movie/tags/
+results_3/movie/tags/
