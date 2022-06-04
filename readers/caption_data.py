@@ -29,6 +29,7 @@ class CaptionDataset(torch.utils.data.Dataset):
     self.ft_root = ft_root
     self.max_words_in_sent = max_words_in_sent
     self.is_train = is_train
+    self.movie2id = json.load(open('/data2/yzh/Dataset/MOVIES/annotation/811/vocab/movie_vocab/c2id.json'))
     self.movie2tags = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/movie_tag_anno.json'))
     self.tag2id = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/tag_vocab.json'))
 
@@ -95,6 +96,7 @@ class CaptionDataset(torch.utils.data.Dataset):
     sentence = example["sentences"][0]
     # tags
     movie_id = example["movie_id"]
+    movie_idx = self.movie2id[movie_id]
     tags = self.movie2tags[movie_id]
     tags = [self.tag2id[t] for t in tags]
     tags_len = len(tags)
@@ -116,7 +118,7 @@ class CaptionDataset(torch.utils.data.Dataset):
     video_feature = np.zeros((max_v_l, feat_dim), np.float32)  # only video features and padding
     video_feature[:feat_len] = raw_feat[:]
 
-    # outs['movie_id'] = movie_idx
+    outs['movie_id'] = movie_idx
     outs['ft_len'] = feat_len
     outs['img_ft'] = video_feature
     outs['name'] = name

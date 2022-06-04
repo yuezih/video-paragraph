@@ -1,5 +1,5 @@
 {
-  "output_dir": "../results/movie/tags/",
+  "output_dir": "../results/movie/dm.token/",
   "ft_root": "/data2/yzh/Dataset/MOVIES/feature",
   "cap_file": {
     "trn":"/data2/yzh/Dataset/MOVIES/annotation/811/normal/origin/train.json",

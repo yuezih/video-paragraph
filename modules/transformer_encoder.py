@@ -41,17 +41,21 @@ class Encoder(nn.Module):
     self.N = N
     self.embed = nn.Linear(ft_dim, d_model)
     self.tags_embedder = Embedder(42, d_model)
+    self.movie_embedder = Embedder(101, d_model)
     self.pe = PositionalEncoder(d_model, dropout=dropout)
     self.layers = get_clones(EncoderLayer(d_model, heads, dropout, keyframes), N)
     self.norm = Norm(d_model)
     self.keyframes = keyframes
 
-  def forward(self, src, tags, mask, tags_mask):
+  def forward(self, src, tags, mask, tags_mask, movie_id):
     x = self.embed(src)
     x = self.pe(x)
     tags_embed = self.tags_embedder(tags)
-    x = torch.cat((tags_embed, x), dim=1)
-    mask = torch.cat((tags_mask, mask), dim=-1)
+    movie_embed = self.movie_embedder(movie_id)
+    x = torch.cat((movie_embed.unsqueeze(1), tags_embed, x), dim=1)
+    movie_mask = torch.tensor([[[True]]]*len(mask)).cuda()
+    mask = torch.cat((movie_mask, tags_mask, mask), dim=-1)
+    # pdb.set_trace()
 
     for i in range(self.N):
       x, select = self.layers[i](x, mask)
