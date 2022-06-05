@@ -7,6 +7,7 @@ import numpy as np
 import random
 import math
 import torch.utils.data
+import h5py
 
 UNK, PAD, BOS, EOS = 0, 1, 2, 3
 
@@ -21,26 +22,15 @@ class CaptionDataset(torch.utils.data.Dataset):
     else:
       self.print_fn = _logger.info
 
-    # self.names = np.load(name_file)
-    # self.num_ft = len(self.names)
-    # self.print_fn('names size %d' % self.num_ft)
-
     self.ref_captions = json.load(open(cap_file)) # gt
     self.names = list(self.ref_captions.keys())
-    # self.train_ref = json.load(open(cap_file['trn']))
-    # self.val_ref = json.load(open(cap_file['val']))
-    # self.test_ref = json.load(open(cap_file['tst']))
-    # self.val_tst_ref = self.val_ref
-    # self.val_tst_ref.update(self.test_ref)
-
-    # self.captions, self.cap2ftid = [], []
-    # for ftid, name in enumerate(self.names):
-    #   self.captions.extend(self.ref_captions[name])
-    #   self.cap2ftid.extend([ftid] * len(self.ref_captions[name]))
-    # self.cap2ftid = np.array(self.cap2ftid)
-    # self.num_caption = len(self.captions)
-    # self.print_fn('captions size %d' % self.num_caption)
     
+    self.role_anno = json.load(open('/data2/yzh/Dataset/MOVIES/metadata/meta_anno.json'))
+    self.face_feature_h5 = h5py.File('/data2/yzh/Dataset/MOVIES/metadata/face_profile_512dim.hdf5', 'r')
+    self.movie_with_face_list = os.listdir('/data2/yzh/Dataset/MOVIES/metadata/xigua_face')
+    
+    self.frameface_root = '/data2/yzh/Dataset/MOVIES/feature/frameface_clip'
+
     self.stoi = json.load(open(word2int))
     self.itos = json.load(open(int2word))
     self.ft_root = ft_root
@@ -104,29 +94,20 @@ class CaptionDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx):
     outs = {}
-    # if self.is_train:
-    #   name = self.names[self.cap2ftid[idx]]
-    # else:
-    #   name = self.names[idx]
-    # name = list(self.ref_captions.keys())[idx]
+
     name = self.names[idx]
     example = self.ref_captions[name]
-    # if self.is_train:
-    #   example = self.train_ref[idx]
-    # else:
-    #   example = self.val_tst_ref[idx]
 
-    # example = self.ref_captions[idx]
-    # start = int(example["timestamps"][0][0])
-    # end = int(example["timestamps"][0][1])
     sentence = example["sentences"][0]
-    # movie_id = example["movie_id"]
+    movie_id = example["movie_id"]
     feat_path_resnet = os.path.join(self.ft_root, "resnet_clip/{}.npy.npz".format(name))
     feat_path_s3d = os.path.join(self.ft_root, "s3d_clip/{}.npy.npz".format(name))
+    feat_path_frameface = os.path.join(self.frameface_root, "{}.npy.npz".format(name))
     # print(feat_path_resnet)
     raw_feat_resnet = np.load(feat_path_resnet)['features']
     raw_feat_s3d = np.load(feat_path_s3d)['features']
-    raw_feat = np.concatenate((raw_feat_resnet, raw_feat_s3d), axis=-1)
+    raw_feat_frameface = np.load(feat_path_frameface)['features']
+    raw_feat = np.concatenate((raw_feat_resnet, raw_feat_s3d, raw_feat_frameface), axis=-1)
 
     feat_len = raw_feat.shape[0]
     feat_dim = raw_feat.shape[1]
@@ -136,9 +117,35 @@ class CaptionDataset(torch.utils.data.Dataset):
     video_feature = np.zeros((max_v_l, feat_dim), np.float32)  # only video features and padding
     video_feature[:feat_len] = raw_feat[:]
 
+    # rolename tokens, max_len = 30
+    role_name_list = []
+    role_feature = np.zeros((30, 512), np.float32)
+
+    if movie_id in self.role_anno and movie_id in self.movie_with_face_list:
+      role_tokens_len = 0
+      for role_id in self.role_anno[movie_id]:
+        role_name = self.role_anno[movie_id][role_id]['rolename']
+        role_name_list.append(role_name)
+        for i in range(len(role_name)):
+          role_feature[role_tokens_len] = np.array(self.face_feature_h5[role_id]['features'], np.float32)
+          role_tokens_len += 1
+          if role_tokens_len >= 30:
+            break
+        if role_tokens_len >= 30:
+          break
+    rolename_str = ''.join(role_name_list)[:30]
+    rolename_len = len(rolename_str)
+    rolename_seq = [self.stoi.get(w, UNK) for w in rolename_str] + [1] * (30 - rolename_len)
+    rolename_seq = np.array(rolename_seq)
+
     outs['ft_len'] = feat_len
     outs['img_ft'] = video_feature
     outs['name'] = name
+
+    outs['rolename_seq'] = rolename_seq
+    outs['rolename_len'] = rolename_len
+    outs['role_face'] = role_feature
+
 
     if self.is_train:
       outs['ref_sents'] = sentence

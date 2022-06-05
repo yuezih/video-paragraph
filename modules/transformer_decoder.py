@@ -1,7 +1,10 @@
+from audioop import bias
+from cmath import e
 import torch
 import torch.nn as nn
 from modules.common import *
 import time
+import pdb
 
 
 class Embedder(nn.Module):
@@ -11,6 +14,25 @@ class Embedder(nn.Module):
     self.embed = nn.Embedding(vocab_size, d_model)
   def forward(self, x):
     return self.embed(x)
+
+class Ptr_Gate(nn.Module):
+  def __init__(self, d_model):
+    super().__init__()
+    self.w_e = nn.Linear(d_model, d_model)
+    self.w_d = nn.Linear(d_model, d_model)
+    # self.w_d_input = nn.Linear(d_model, d_model)
+    # self.bias_ptr = nn.Parameter(torch.zeros((1, d_model)))
+    self.compute = nn.Linear(d_model, 1, bias=True)
+    
+  def forward(self, e_outputs, e_attn, d_hidden_states):
+    # 用e_attn对e_outputs进行加权并求和得到e_hidden_states
+    # e_outputs: [seq_len, d_model]
+    # e_attn: [1, seq_len]
+    # e_hidden_states: [1, d_model]
+    e_hidden_states = torch.bmm(e_attn, e_outputs).squeeze(1) # [batch_size, d_model]
+    p_gen = self.compute(self.w_e(e_hidden_states) + self.w_d(d_hidden_states))
+    p_gen = torch.sigmoid(p_gen)
+    return p_gen
 
 
 class DecoderLayer(nn.Module):
