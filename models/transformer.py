@@ -77,11 +77,14 @@ class TransModel(framework.modelbase.ModelBase):
     trg_input = trg[:, :-1]
     src_mask, trg_mask = self.create_masks(ft_len, img_fts.size(1), trg_input)
     outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask, rolename, roleface, rolename_mask)
-    outputs = nn.LogSoftmax(dim=-1)(outputs)
+    # outputs = nn.LogSoftmax(dim=-1)(outputs)
+    outputs = torch.log(outputs)
+
     ys = trg[:, 1:].contiguous().view(-1)
     norm = trg[:, 1:].ne(1).sum().item()
     # pdb.set_trace()
     xe_loss = self.criterion[0](outputs.view(-1, outputs.size(-1)), ys, norm)
+    # print('xe_loss:', xe_loss)
     
     if self.config.subcfgs[DECODER].keyframes:
       # reconstruct the orginal semantic feature vector

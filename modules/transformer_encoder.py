@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from modules.common import *
+import pdb
 
 class Embedder(nn.Module):
   def __init__(self, vocab_size, d_model):
@@ -33,6 +34,7 @@ class EncoderLayer(nn.Module):
       x = x + self.dropout_2(self.ff(x2))
       return x, None
 
+
 class RoleEncoder(nn.Module):
   def __init__(self, d_model, N, heads, dropout):
     super().__init__()
@@ -40,18 +42,19 @@ class RoleEncoder(nn.Module):
     self.N = N
     self.token_embed = Embedder(4301, d_model)
     self.face_embed = nn.Linear(512, d_model)
-    self.pe = PositionalEncoder(d_model, dropout=dropout)
-    self.layers = get_clones(EncoderLayer(d_model, heads, dropout), N)
+    # self.pe = PositionalEncoder(d_model, dropout=dropout)
+    # self.layers = get_clones(EncoderLayer(d_model, heads, dropout), N)
     self.norm = Norm(d_model)
 
   def forward(self, role, roleface, mask):
     x = self.token_embed(role)
     face = self.face_embed(roleface)
     x = x + face
-    x = self.pe(x)
-    for i in range(self.N):
-      x, select = self.layers[i](x, mask)
+    # x = self.pe(x)
+    # for i in range(self.N):
+    #   x, select = self.layers[i](x, mask)
     return self.norm(x)
+
 
 class Encoder(nn.Module):
   def __init__(self, ft_dim, d_model, N, heads, dropout, keyframes=False):
