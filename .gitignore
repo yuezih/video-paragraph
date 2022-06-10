@@ -17,3 +17,4 @@ results_3/movie/face/
 results_3/movie/tags/
 results/movie/face/attn_log.txt
 results/movie/face/attn_log_zs.txt
+results/movie/dm.token/attn_log.txt

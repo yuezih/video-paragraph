@@ -1,2 +1,2 @@
-CUDA_VISIBLE_DEVICES=0 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --is_train
+CUDA_VISIBLE_DEVICES=3 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --is_train
 # CUDA_VISIBLE_DEVICES=3 python transformer.py ../results/movie/dm.token/model.json ../results/movie/dm.token/path.json --eval_set tst --resume_file ../results/movie/face/model/epoch.38.th

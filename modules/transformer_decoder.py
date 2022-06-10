@@ -59,11 +59,15 @@ class Decoder(nn.Module):
   def __init__(self, vocab_size, d_model, N, heads, dropout):
     super().__init__()
     self.N = N
+    self.vocab_size = vocab_size
+    self.d_model = d_model
     self.embed = Embedder(vocab_size, d_model)
     self.pe = PositionalEncoder(d_model, dropout=dropout)
     self.layers = get_clones(DecoderLayer(d_model, heads, dropout), N)
     self.norm = Norm(d_model)
+    self.face_embed = nn.Linear(d_model, d_model)
     self.cache = None
+    self.face_id_recoder = []
   
   def _init_cache(self):
     self.cache = {}
@@ -73,11 +77,25 @@ class Decoder(nn.Module):
         'self_values': None,
       }    
 
-  def forward(self, trg, e_outputs, src_mask, trg_mask, step=None):
+  def forward(self, trg, e_outputs, src_mask, trg_mask, roleface, step=None):
     if step == 1:
       self._init_cache()
-
-    x = self.embed(trg)
+    self.face_id_recoder = []
+    for i in range(trg.shape[0]):
+      if trg[i][0] >= self.vocab_size:
+        self.face_id_recoder.append(i)
+    if len(self.face_id_recoder) > 0:
+      # x = torch.cat([self.embed(trg[i][0]) for i in range(trg.shape[0])], dim=0)
+      x = torch.zeros(trg.shape[0], 1, self.d_model).cuda()
+      for i in range(trg.shape[0]):
+        if i in self.face_id_recoder:
+          face_idx = trg[i] - self.vocab_size
+          x[i] = self.face_embed(roleface[i][face_idx].unsqueeze(0))
+        else:
+          x[i] = self.embed(trg[i])
+    else:
+      x = self.embed(trg)
+    # pdb.set_trace()
     x = self.pe(x, step)
     attn_w = []
     for i in range(self.N):

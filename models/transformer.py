@@ -53,7 +53,7 @@ class TransModel(framework.modelbase.ModelBase):
     return submods
 
   def build_loss(self):
-    xe_loss = metrics.criterion.UnlikelihoodLoss(0.1,self.config.subcfgs[DECODER].vocab,1)
+    xe_loss = metrics.criterion.UnlikelihoodLoss(0.1, 4311 ,1)
     rl_loss = metrics.criterion.RewardLoss(self.config.subcfgs[DECODER].document_freq)
     reconstruct = metrics.criterion.L2Loss()
     sparsity = metrics.criterion.L1Loss()
@@ -61,9 +61,9 @@ class TransModel(framework.modelbase.ModelBase):
 
   def forward_loss(self, batch_data, TRG, step=None):
     # role name tokens
-    rolename = batch_data['rolename_seq'].cuda()
+    # rolename = batch_data['rolename_seq']
     rolename_len = batch_data['rolename_len'].cuda()
-    rolename_mask = self.attn_mask(rolename_len, max_len=rolename.size(1)).unsqueeze(-2)
+    rolename_mask = self.attn_mask(rolename_len, max_len=10).unsqueeze(-2)
     # role face feature
     roleface = batch_data['role_face'].cuda()
     # video feature (with face, (feat_len, 1536+512*3))
@@ -76,13 +76,12 @@ class TransModel(framework.modelbase.ModelBase):
 
     trg_input = trg[:, :-1]
     src_mask, trg_mask = self.create_masks(ft_len, img_fts.size(1), trg_input)
-    outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask, rolename, roleface, rolename_mask)
-    # outputs = nn.LogSoftmax(dim=-1)(outputs)
-    outputs = torch.log(outputs)
+    outputs, key_enc, select = self.submods[DECODER](img_fts, trg_input, src_mask, trg_mask, roleface, rolename_mask)
+    outputs = nn.LogSoftmax(dim=-1)(outputs)
+    # outputs = torch.log(outputs)
 
     ys = trg[:, 1:].contiguous().view(-1)
     norm = trg[:, 1:].ne(1).sum().item()
-    # pdb.set_trace()
     xe_loss = self.criterion[0](outputs.view(-1, outputs.size(-1)), ys, norm)
     # print('xe_loss:', xe_loss)
     
@@ -132,13 +131,13 @@ class TransModel(framework.modelbase.ModelBase):
       img_mask = self.attn_mask(ft_len, max_len=img_fts.size(1)).unsqueeze(-2)
 
       # role name tokens and face feature
-      rolename = batch_data['rolename_seq'].cuda()
+      rolename = batch_data['rolename_seq'].cuda() # [[3017,25,-1,-1,-1],[101,817,-1,-1,-1],[-1,-1,-1,-1,-1]]
       rolename_len = batch_data['rolename_len'].cuda()
-      rolename_mask = self.attn_mask(rolename_len, max_len=rolename.size(1)).unsqueeze(-2)
+      rolename_mask = self.attn_mask(rolename_len, max_len=10).unsqueeze(-2)
       roleface = batch_data['role_face'].cuda()
 
       output, _, attn = self.submods[DECODER].sample(img_fts, img_mask, rolename, roleface, rolename_mask, decoding='greedy')
-      sents_per_batch = tst_reader.dataset.int2sent(output.detach())
+      sents_per_batch = tst_reader.dataset.int2sent_role(output.detach(), rolename)
       # pdb.set_trace()
       pred_sents.extend(sents_per_batch)
     # pdb.set_trace()

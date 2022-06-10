@@ -61,6 +61,57 @@ def attention(q, k, v, d_k, mask=None, dropout=None):
   output = torch.matmul(scores, v)
   return output, scores
 
+def raw_attention(q, k, v, d_k, mask=None, dropout=None):
+  scores = torch.matmul(q, k.transpose(-2, -1)) /  math.sqrt(d_k)
+  if mask is not None:
+    mask = mask.unsqueeze(1)
+    scores = scores.masked_fill(mask == 0, -1e9) 
+  # scores = F.softmax(scores, dim=-1) 
+  if dropout is not None:
+    scores = dropout(scores)     
+  output = torch.matmul(scores, v)
+  return output, scores
+
+class RawMultiHeadAttention(nn.Module):
+  def __init__(self, heads, d_model, dropout=0.1):
+    super().__init__() 
+    self.d_model = d_model
+    self.d_k = d_model // heads
+    self.h = heads
+    self.q_linear = nn.Linear(d_model, d_model)
+    self.v_linear = nn.Linear(d_model, d_model)
+    self.k_linear = nn.Linear(d_model, d_model)  
+    self.dropout = nn.Dropout(dropout)
+    self.out = nn.Linear(d_model, d_model)
+
+  def shape(self, x):
+    bs = x.size(0)
+    return x.view(bs, -1, self.h, self.d_k).transpose(1,2)
+    
+  def forward(self, q, k, v, mask=None, layer_cache=None, attn_type=None):
+    if layer_cache is not None:
+      if attn_type == "self":
+        k = self.shape(self.k_linear(k)) # (batch, key_len=1, dim_embed)
+        v = self.shape(self.v_linear(v))
+        if layer_cache['self_keys'] is not None:
+          k = torch.cat((layer_cache['self_keys'], k), dim=2)
+        if layer_cache['self_values'] is not None:
+          v = torch.cat((layer_cache['self_values'], v), dim=2)
+        layer_cache['self_keys'] = k
+        layer_cache['self_values'] = v
+    else:
+      k = self.shape(self.k_linear(k)) # (batch, key_len, dim_embed)
+      v = self.shape(self.v_linear(v))
+
+    bs = q.size(0)
+    q = self.shape(self.q_linear(q))
+    # calculate attention using function we will define next
+    scores, attn = raw_attention(q, k, v, self.d_k, mask, self.dropout)
+    # concatenate heads and put through final linear layer
+    concat = scores.transpose(1,2).contiguous().view(bs, -1, self.d_model)
+    output = self.out(concat)
+    return output, attn
+
 class MultiHeadAttention(nn.Module):
   def __init__(self, heads, d_model, dropout=0.1):
     super().__init__() 

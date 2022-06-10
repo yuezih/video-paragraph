@@ -85,6 +85,43 @@ class CaptionDataset(torch.utils.data.Dataset):
     batch = [" ".join(filter(filter_special, ex)).replace("@@ ", "") for ex in batch]
     return batch
 
+  def int2sent_role(self, batch, rolename):
+    with torch.cuda.device_of(batch):
+      batch = batch.tolist()
+      rolename = rolename.tolist()
+    batch_out = []
+    for ex in range(len(batch)):
+      ex_out = []
+      rolename_list = rolename[ex]
+      for ind in batch[ex]:
+        if ind >= len(self.itos):
+          role_idx = ind - len(self.itos)
+          for role_token in rolename_list[role_idx]:
+            if role_token != -1:
+              ex_out.append(self.itos[str(role_token)])
+            else:
+              break
+        else:
+          ex_out.append(self.itos.get(str(ind), '<unk>'))
+      batch_out.append(ex_out)
+    
+    def trim(s, t):
+      sentence = []
+      for w in s:
+        if w == t:
+          break
+        sentence.append(w)
+      return sentence
+
+    batch_out = [trim(ex, '<eos>') for ex in batch_out] # trim past frst eos
+
+    def filter_special(tok):
+      return tok not in ('<sos>', '<pad>')
+
+    batch_out = [" ".join(filter(filter_special, ex)).replace("@@ ", "") for ex in batch_out]
+    return batch_out
+
+
   def __len__(self):
     # if self.is_train:
     #   return len(self.captions)
@@ -117,39 +154,48 @@ class CaptionDataset(torch.utils.data.Dataset):
     video_feature = np.zeros((max_v_l, feat_dim), np.float32)  # only video features and padding
     video_feature[:feat_len] = raw_feat[:]
 
-    # rolename tokens, max_len = 30
+    # rolename, max_len = 10
     role_name_list = []
-    role_feature = np.zeros((30, 512), np.float32)
+    role_name_seq = []
+    role_feature = np.zeros((10, 512), np.float32)
 
     if movie_id in self.role_anno and movie_id in self.movie_with_face_list:
-      role_tokens_len = 0
       for role_id in self.role_anno[movie_id]:
+        role_feature[len(role_name_list)] = np.array(self.face_feature_h5[role_id]['features'], np.float32)
         role_name = self.role_anno[movie_id][role_id]['rolename']
+        role_name_sent = [self.stoi.get(w, UNK) for w in role_name][:5] + [-1] * max(0, 5-len(role_name))
         role_name_list.append(role_name)
-        for i in range(len(role_name)):
-          role_feature[role_tokens_len] = np.array(self.face_feature_h5[role_id]['features'], np.float32)
-          role_tokens_len += 1
-          if role_tokens_len >= 30:
-            break
-        if role_tokens_len >= 30:
+        role_name_seq.append(role_name_sent)
+        if len(role_name_list) == 10:
           break
-    rolename_str = ''.join(role_name_list)[:30]
-    rolename_len = len(rolename_str)
-    rolename_seq = [self.stoi.get(w, UNK) for w in rolename_str] + [1] * (30 - rolename_len)
-    rolename_seq = np.array(rolename_seq)
+    
+    role_name_seq += [[-1] * 5] * (10 - len(role_name_list))
+    role_name_seq = np.array(role_name_seq)
+        
+    rolename_len = len(role_name_list)
 
     outs['ft_len'] = feat_len
     outs['img_ft'] = video_feature
     outs['name'] = name
 
-    outs['rolename_seq'] = rolename_seq
+    outs['rolename_seq'] = role_name_seq
     outs['rolename_len'] = rolename_len
     outs['role_face'] = role_feature
 
 
     if self.is_train:
       outs['ref_sents'] = sentence
-      sent_id, sent_len = self.pad_sent(self.sent2int(sentence))
-      outs['caption_ids'] = sent_id
-      outs['id_len'] = sent_len
+      sent_id = []
+      i = 0
+      while i < len(sentence):
+        if sentence[i] == '@':
+          sent_id.append(int(sentence[i+1])+4301)
+          i += 1
+        else:
+          sent_id.append(self.stoi.get(sentence[i], UNK))
+        i += 1
+      # sent_id, sent_len = self.pad_sent(self.sent2int(sentence))
+      padded, padded_len = self.pad_sent(sent_id)
+      outs['caption_ids'] = padded
+      outs['id_len'] = padded_len
     return outs

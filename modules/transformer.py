@@ -6,9 +6,9 @@ import framework.configbase
 import math
 import time
 import numpy as np
-from modules.transformer_encoder import Encoder, RoleEncoder
+from modules.transformer_encoder import Encoder, FaceEncoder
 from modules.transformer_decoder import Decoder, Ptr_Gate
-from modules.common import MultiHeadAttention
+from modules.common import RawMultiHeadAttention
 import pdb
 import json
 
@@ -38,7 +38,8 @@ class Transformer(nn.Module):
     super(Transformer, self).__init__()
     self.config = config
     self.encoder = Encoder(self.config.ft_dim, self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout, self.config.keyframes)
-    self.r_encoder = RoleEncoder(self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout)
+    # self.r_encoder = RoleEncoder(self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout)
+    self.f_encoder = FaceEncoder(self.config.d_model, self.config.enc_n_layers, self.config.heads, self.config.dropout)
     self.decoder = Decoder(self.config.vocab, self.config.d_model, self.config.dec_n_layers, self.config.heads, self.config.dropout)
     self.dropout = nn.Dropout(self.config.dropout)
     self.logit = nn.Linear(self.config.d_model, self.config.vocab)
@@ -48,18 +49,19 @@ class Transformer(nn.Module):
     self.q_linear = nn.Linear(self.config.d_model, self.config.d_model, bias=False)
     self.next_attn = nn.Linear(2*self.config.d_model, 1)
     self.init_weights()
-    self.ptr_gate = Ptr_Gate(self.config.d_model)
-    self.role_selector = MultiHeadAttention(self.config.heads, self.config.d_model, self.config.dropout)
-    self.attn_log = open('/data2/yzh/cloned_repo/video-paragraph/results/movie/face/attn_log_zs.txt', 'a')
+    # self.ptr_gate = Ptr_Gate(self.config.d_model)
+    self.role_selector = RawMultiHeadAttention(self.config.heads, self.config.d_model, self.config.dropout)
+    self.attn_log = open('/data2/yzh/cloned_repo/video-paragraph/results/movie/dm.token/attn_log.txt', 'a')
 
   def init_weights(self,):
     for p in self.parameters():
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
 
-  def forward(self, src, trg, src_mask, trg_mask, rolename, roleface, rolename_mask):
+  def forward(self, src, trg, src_mask, trg_mask, roleface, rolename_mask):
     e_outputs, org_key, select = self.encoder(src, src_mask)
-    r_outputs = self.r_encoder(rolename, roleface, rolename_mask)
+    # r_outputs = self.r_encoder(rolename, roleface, rolename_mask)
+    f_outputs = self.f_encoder(roleface)
     d_output, attn_weights = [], []
     output = []    
 
@@ -69,66 +71,27 @@ class Transformer(nn.Module):
 
     for i in range(1, trg.size(1)+1):
       # decode
-      word, attn = self.decoder(trg[:,i-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,i-1,:i].unsqueeze(1), step=i)
+      # pdb.set_trace()
+      word, attn = self.decoder(trg[:,i-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,i-1,:i].unsqueeze(1), roleface, step=i)
       d_output.append(word[:,-1])
       attn_weights.append(attn[:,:,-1].mean(dim=1))
       # select frame
-      # frame_select = torch.softmax(attn_weights[-1], dim=1).max(dim=1)[1]
-      # selected_frame = torch.zeros(e_outputs.size(0), e_outputs.size(-1)).cuda()
-      # for i in range(e_outputs.size(0)):
-      #   selected_frame[i,:] = e_outputs[i, int(frame_select[i]), :]
-      # frame_select = torch.softmax(attn_weights[-1]/0.1, dim=-1) # temperature = 0.1
       # 这里别softmax，下面也是，否则会给padding分配权重
       frame_select = attn_weights[-1]
       selected_frame = torch.bmm(frame_select.unsqueeze(1), memory_bank)
       # update memory
       memory_bank, add_state = self.update_memory(memory_bank, add_state, e_outputs, attn_weights[-20:], d_output[-20:])
-      # attend to role tokens
-      _, role_attn = self.role_selector(selected_frame, r_outputs, r_outputs, rolename_mask)
-      role_attn_weights = role_attn[:,:,-1].mean(dim=1)
-      # compute p_gen
-      p_gen = self.ptr_gate(word[:,-1])
-      raw_gen = torch.ones(p_gen.size()).cuda() - p_gen
+      # attend to role faces
+      _, role_attn = self.role_selector(selected_frame, f_outputs, f_outputs)
+      role_attn_weights = role_attn.mean(dim=1) # [batch, 1, seq_len]
       # comput distribution
-      raw_distribution = self.logit(word[:,-1])
-      raw_distribution = torch.softmax(raw_distribution, dim=-1)
+      vocab_distribution = self.logit(word[:,-1]).unsqueeze(1) # [batch, 1, vocab]
+      # vocab_distribution = torch.softmax(vocab_distribution, dim=-1).unsqueeze(1) # [batch, 1, vocab]
+      # pdb.set_trace()
+      # cancat distribution
+      joint_distribution = torch.cat([vocab_distribution, role_attn_weights], dim=-1) # [batch, 1, vocab+10]
 
-      raw_gen = raw_gen.expand_as(raw_distribution)
-      raw_distribution = torch.mul(raw_distribution, raw_gen)
-
-      ptr_matrix = torch.zeros(raw_distribution.size()).cuda()
-      value = role_attn_weights.flatten().cuda()
-      # 创建一个batchsize*30的矩阵，第i行全是i
-      batch_index = torch.arange(0, ptr_matrix.size(0)).unsqueeze(1).expand(ptr_matrix.size(0), 30).flatten().cuda()
-      token_index = rolename.flatten().cuda()
-      index = (batch_index, token_index)
-      ptr_matrix.index_put_(index, value)
-
-      p_gen = p_gen.expand_as(ptr_matrix)
-      ptr_matrix = torch.mul(ptr_matrix, p_gen)
-
-      batch_output = raw_distribution + ptr_matrix
-
-      # for batch_data in range(raw_distribution.size(0)):
-      #   token_list = rolename[batch_data]
-      #   for token_idx in range(len(token_list)):
-      #     if bool(rolename_mask[batch_data][0][token_idx]) is True:
-      #       ptr_matrix[batch_data, token_list[token_idx]] = role_attn_weights[batch_data][token_idx]
-      #     else:
-      #       break
-      # index_put
-
-      # batch_output = []
-      # for batch_data in range(e_outputs.size(0)):
-      #   token_list = rolename[batch_data]
-      #   for token_idx in range(len(token_list)):
-      #     if bool(rolename_mask[batch_data][0][token_idx]) is True:
-      #       raw_distribution[batch_data, token_list[token_idx]] += p_gen[batch_data][0] * role_attn_weights[batch_data][token_idx]
-      #     else:
-      #       break
-      #   batch_output.append(raw_distribution[batch_data, :])
-      # batch_output = torch.cat([_.unsqueeze(0) for _ in batch_output], dim=0)
-      output.append(batch_output.unsqueeze(1))
+      output.append(joint_distribution)
     output = torch.cat([_.unsqueeze(1) for _ in output], dim=1)
     # output = self.logit(torch.cat([_.unsqueeze(1) for _ in d_output], 1)) # [batch_size, trg_len, vocab_size]
     return output, org_key, select
@@ -156,7 +119,8 @@ class Transformer(nn.Module):
       e_outputs, src_mask = self.encoder.get_keyframes(src, src_mask)
     else:
       e_outputs, _, _ = self.encoder(src, src_mask)
-    r_outputs = self.r_encoder(rolename, roleface, rolename_mask)
+    # r_outputs = self.r_encoder(rolename, roleface, rolename_mask)
+    f_outputs = self.f_encoder(roleface)
     # initialize memory
     add_state = torch.tensor(decay2[:e_outputs.size(1)]+[0]*max(0,e_outputs.size(1)-50)).cuda().unsqueeze(0).unsqueeze(-1)
     memory_bank = e_outputs * add_state
@@ -167,41 +131,25 @@ class Transformer(nn.Module):
     for i in range(1, 60):
       # decode
       trg_mask = self.nopeak_mask(i)
-      word, attn = self.decoder(outputs[:,-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,-1].unsqueeze(1), step=i)
+      word, attn = self.decoder(outputs[:,-1].unsqueeze(1), memory_bank, src_mask, trg_mask[:,-1].unsqueeze(1), roleface, step=i)
       attn_weights.append(attn[:,:,-1].mean(dim=1))
       d_output.append(word[:,-1])
       # select frame
       frame_select = attn_weights[-1]
       selected_frame = torch.bmm(frame_select.unsqueeze(1), memory_bank).squeeze(1)
       # attend to role tokens
-      _, role_attn = self.role_selector(selected_frame, r_outputs, r_outputs, rolename_mask)
-      role_attn_weights = role_attn[:,:,-1].mean(dim=1)
-      # compute p_gen
-      p_gen = self.ptr_gate(word[:,-1])
+      _, role_attn = self.role_selector(selected_frame, f_outputs, f_outputs)
+      role_attn_weights = role_attn.mean(dim=1)
       # 追加写入attn_log.txt
-      self.attn_log.write('p_gen:\t'+str(p_gen[0])+'\nframe:\t'+str(frame_select[0])+'\nrole:\t'+str(role_attn_weights[0])+'\n')
-      raw_gen = torch.ones(p_gen.size()).cuda() - p_gen
-      # compute logit
-      out = self.logit(word[:,-1])
-      raw_distribution = torch.softmax(out, dim=-1)
-      raw_gen = raw_gen.expand_as(raw_distribution)
-      raw_distribution = torch.mul(raw_distribution, raw_gen)
-
-      ptr_matrix = torch.zeros(raw_distribution.size()).cuda()
-      value = role_attn_weights.flatten().cuda()
-      batch_index = torch.arange(0, ptr_matrix.size(0)).unsqueeze(1).expand(ptr_matrix.size(0), 30).flatten().cuda()
-      token_index = rolename.flatten().cuda()
-      index = (batch_index, token_index)
-      ptr_matrix.index_put_(index, value)
-      p_gen = p_gen.expand_as(ptr_matrix)
-      ptr_matrix = torch.mul(ptr_matrix, p_gen)
-
-      batch_output = raw_distribution + ptr_matrix
-
-      logprobs = torch.log(batch_output)
+      self.attn_log.write('frame:\t'+str(frame_select[0])+'\nrole:\t'+str(role_attn_weights[0])+'\n')
+      # compute distribution
+      vocab_distribution = self.logit(word[:,-1]).unsqueeze(1)
+      joint_distribution = torch.cat([vocab_distribution, role_attn_weights], dim=-1)
+      
+      logprobs = F.log_softmax(joint_distribution, dim=-1)
+      # pdb.set_trace()
       if decoding == 'greedy':
-        _, next_word = torch.max(logprobs, dim=1)
-        next_word = next_word.unsqueeze(-1)
+        _, next_word = torch.max(logprobs, dim=-1)
       else:
         probs = torch.exp(logprobs.data).cpu()
         next_word = torch.multinomial(probs, 1).cuda()
